@@ -1,7 +1,11 @@
 from flask import Flask, redirect, url_for, session, request, jsonify, Markup
 from flask_oauthlib.client import OAuth
 from flask import render_template
+from bson.objectid import ObjectId
 
+import pymongo
+import sys
+import dns
 import pprint
 import os
 import json
@@ -27,10 +31,30 @@ github = oauth.remote_app(
     )
 
 #TODO: Create and set a global variable for the name of you JSON file here.  The file will be storedd on Heroku, so you don't need to make it in GitHub
-Jason = "jason.json"
+
 #TODO: Create the file on Heroku using os.system.  Ex) os.system("echo '[]'>"+myFile) puts '[]' into your file
 
-os.system("echo []>"+Jason)
+
+url = 'mongodb+srv://{}:{}@{}/{}'.format(
+    os.environ["MONGO_USERNAME"],
+    os.environ["MONGO_PASSWORD"],
+    os.environ["MONGO_HOST"],
+    os.environ["MONGO_DBNAME"]
+)
+client = pymongo.MongoClient(os.environ["MONGO_HOST"])
+db = client[os.environ["MONGO_DBNAME"]]
+collection = db['text']
+def main():
+    url = 'mongodb+srv://{}:{}@{}/{}'.format(
+        os.environ["MONGO_USERNAME"],
+        os.environ["MONGO_PASSWORD"],
+        os.environ["MONGO_HOST"],
+        os.environ["MONGO_DBNAME"]
+    )
+    client = pymongo.MongoClient(url)
+    db = client[os.environ["MONGO_DBNAME"]]
+    collection = db['message']
+        #mongodb+srv://yoitsme:<password>@cluster0-sagjy.mongodb.net/test?retryWrites=true
 
 @app.context_processor
 def inject_logged_in():
@@ -38,29 +62,31 @@ def inject_logged_in():
 
 @app.route('/')
 def home():
-    with open('jason.json', 'r') as f:
-        data = json.load(f)
 
     allUserNames = "";
-    for unitcorn in data:
-        allUserNames += "<p>" + unitcorn["user"] + ": " + unitcorn['message'] + "</p>"
+    #collection.find_one({})
 
+    for text in collection.find({}):
+        vrbl = str(text['_id'])
+        allUserNames += "<p>" + text["user"] + ": " + text['message'] + "</p>" + '<form action = "/delete" method = "post"> <button type="submit" name="delete" value="'+vrbl+'">Delete</button> </form>'
+
+    from bson.objectid import ObjectId
     return render_template('home.html', past_posts=Markup(allUserNames))
+
+@app.route('/delete', methods=['POST'])
+def delete():
+    vrbl2 = request.form["delete"]
+    collection.delete_one({"_id": ObjectId(vrbl2)})
+
+    return redirect(url_for("home"))
 
 @app.route('/posted', methods=['POST'])
 def post():
-    with open('jason.json', 'r') as f:
-        data = json.load(f)
-
-
 
     post = {}
     post["user"] = session['user_data']['login']
     post["message"] = request.form["message"]
-    data.append(post)
-
-    with open('jason.json', 'w') as f:
-        json.dump(data, f)
+    collection.insert_one(post)
 
     return redirect(url_for("home"))
     #This function should add the new post to the JSON file of posts and then render home.html and display the posts.
